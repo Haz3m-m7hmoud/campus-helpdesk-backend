@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================
+// 1. Enums
+// =====================================
+enum Role {
+  REPORTER
+  AGENT
+  TECHNICIAN
+  MANAGER
+}
+
+enum TicketStatus {
+  New
+  Triaged
+  Assigned
+  In_Progress  @map("In Progress")
+  Waiting
+  Resolved
+  Reopened
+  Closed
+}
+
+// =====================================
+// 2. Auth & Users
+// =====================================
+model User {
+  id              String            @id @default(uuid()) 
+  email           String            @unique
+  name            String
+  password        String            
+  role            Role              @default(REPORTER)
+  createdAt       DateTime          @default(now())
+
+  reportedTickets TICKET[]          @relation("ReportedTickets")
+}
+
+// =====================================
+// 3. Entities
+// =====================================
+model SUPPORT_TEAM {
+  team_id         Int          @id @default(autoincrement())
+  name            String
+  team_type       String       
+  
+  categories      CATEGORY[]
+  assignments     ASSIGNMENT[]
+}
+
+model CATEGORY {
+  category_id     Int          @id @default(autoincrement())
+  name            String       @unique
+  description     String?
+  default_team_id Int
+  
+  default_team    SUPPORT_TEAM @relation(fields: [default_team_id], references: [team_id])
+  tickets         TICKET[]
+  assets          ASSET[]
+  predictions     PREDICTION[] @relation("PredictedCategory")
+  overrides       PREDICTION[] @relation("OverrideCategory")
+}
+
+model LOCATION {
+  location_id     Int          @id @default(autoincrement())
+  name            String       @unique
+  type            String       
+  
+  tickets         TICKET[]
+  assets          ASSET[]
+}
+
+model ASSET {
+  asset_id        String       @id 
+  location_id     Int
+  category_id     Int
+  asset_type      String
+  
+  location        LOCATION     @relation(fields: [location_id], references: [location_id])
+  category        CATEGORY     @relation(fields: [category_id], references: [category_id])
+  tickets         TICKET[]
+}
+
+model SLA_POLICY {
+  priority               String   @id 
+  response_sla_hours     Int
+  resolution_sla_hours   Int
+  
+  tickets                TICKET[]
+}
+
+// =====================================
+// 4. Core TICKET Model
+// =====================================
+model TICKET {
+  ticket_id              String    @id @default(uuid())
+  reporter_id            String    
+  title                  String
+  description            String    @db.Text
+  category_id            Int
+  location_id            Int
+  asset_id               String?
+  issue_type             String    
+  urgency                String    
+  impact                 String    
+  priority               String    
+  status                 TicketStatus @default(New)
+  
+  created_at             DateTime  @default(now())
+  first_response_at      DateTime?
+  assigned_at            DateTime?
+  resolved_at            DateTime?
+  closed_at              DateTime?
+  response_sla_due_at    DateTime? 
+  resolution_sla_due_at  DateTime?
+  
+  user_responded         Boolean   @default(false)
+  reopened               Boolean   @default(false)
+  reopen_reason          String?
+  duplicate_of           String?   
+  is_emergency           Boolean   @default(false)
+  escalated              Boolean   @default(false)
+  escalation_reason      String?
+  escalation_level       Int?      @db.SmallInt
+  
+  reporter               User          @relation("ReportedTickets", fields: [reporter_id], references: [id])
+  category               CATEGORY      @relation(fields: [category_id], references: [category_id])
+  location               LOCATION      @relation(fields: [location_id], references: [location_id])
+  asset                  ASSET?        @relation(fields: [asset_id], references: [asset_id])
+  sla_policy             SLA_POLICY    @relation(fields: [priority], references: [priority])
+  
+  duplicate_ticket       TICKET?       @relation("DuplicateTickets", fields: [duplicate_of], references: [ticket_id])
+  duplicates             TICKET[]      @relation("DuplicateTickets")
+
+  assignments            ASSIGNMENT[]
+  history                TICKET_STATUS_HISTORY[]
+  prediction             PREDICTION?
+  feedback               FEEDBACK?
+}
+
+// =====================================
+// 5. Data Analytics Tables
+// =====================================
+model ASSIGNMENT {
+  assignment_id   String    @id @default(uuid())
+  ticket_id       String
+  team_id         Int
+  assigned_at     DateTime  @default(now())
+  completed_at    DateTime?
+
+  ticket          TICKET       @relation(fields: [ticket_id], references: [ticket_id])
+  team            SUPPORT_TEAM @relation(fields: [team_id], references: [team_id])
+}
+
+model PREDICTION {
+  prediction_id          String   @id @default(uuid())
+  ticket_id              String   @unique
+  predicted_category_id  Int
+  predicted_priority     String
+  confidence             Decimal  @db.Decimal(5, 4) 
+  model_version          String
+  ai_overridden          Boolean  @default(false)
+  override_category_id   Int?
+  override_priority      String?
+  created_at             DateTime @default(now())
+
+  ticket                 TICKET   @relation(fields: [ticket_id], references: [ticket_id])
+  predicted_category     CATEGORY @relation("PredictedCategory", fields: [predicted_category_id], references: [category_id])
+  override_category      CATEGORY? @relation("OverrideCategory", fields: [override_category_id], references: [category_id])
+}
+
+model FEEDBACK {
+  feedback_id            String   @id @default(uuid())
+  ticket_id              String   @unique
+  resolution_confirmed   Boolean
+  rating                 Int      @db.SmallInt 
+  reopen_reason          String?
+  created_at             DateTime @default(now())
+
+  ticket                 TICKET   @relation(fields: [ticket_id], references: [ticket_id])
+}
+
+model TICKET_STATUS_HISTORY {
+  history_id      String   @id @default(uuid())
+  ticket_id       String
+  old_status      String?  
+  new_status      String
+  changed_at      DateTime @default(now())
+  changed_by      String   
+
+  ticket          TICKET   @relation(fields: [ticket_id], references: [ticket_id])
+}
