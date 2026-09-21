@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcrypt'); // 👈 ضفنا مكتبة التشفير عشان الباسوردات
 const prisma = new PrismaClient();
 
 async function main() {
@@ -61,14 +62,11 @@ async function main() {
     }
     console.log('✅ SLA Policies seeded.');
 
-    // 4. Seed Specific Numeric Locations (101-120, 201-220, 301-320, 401-420)
+    // 4. Seed Specific Numeric Locations
     console.log('🏢 Building rooms per floor (101-120, 201-220, etc.)...');
-    
-    // من الدور الأول للدور الرابع
     for (let floor = 1; floor <= 4; floor++) {
-        // من الغرفة 1 للغرفة 20 في كل دور
         for (let room = 1; room <= 20; room++) {
-            const location_id = (floor * 100) + room; // هيطلع 101, 102 ... 201, 202
+            const location_id = (floor * 100) + room; 
             
             await prisma.lOCATION.upsert({
                 where: { location_id: location_id },
@@ -82,6 +80,39 @@ async function main() {
         }
     }
     console.log('✅ Exact floor rooms seeded (80 locations total).');
+
+    // ==========================================
+    // 5. Seed Users (الدمج الجديد لحسابات الداشبورد)
+    // ==========================================
+    console.log('👤 Seeding default users (Dashboards)...');
+    const defaultUsers = [
+        { name: 'System Manager', email: 'manager@badr.edu.eg', password: 'Password123', role: 'MANAGER', team_id: null },
+        { name: 'System Auditor', email: 'auditor@badr.edu.eg', password: 'Password123', role: 'AUDITOR', team_id: null },
+        { name: 'Student Reporter', email: 'student@badr.edu.eg', password: 'Password123', role: 'REPORTER', team_id: null },
+        // تم ربط الوكيل والفني بـ IT Support (team_id: 1)
+        { name: 'Support Agent', email: 'agent@badr.edu.eg', password: 'Password123', role: 'AGENT', team_id: 1 },
+        { name: 'Main Technician', email: 'tech@badr.edu.eg', password: 'Password123', role: 'TECHNICIAN', team_id: 1 }
+    ];
+
+    for (const u of defaultUsers) {
+        const existingUser = await prisma.user.findUnique({ where: { email: u.email } });
+        
+        if (!existingUser) {
+            const hashedPassword = await bcrypt.hash(u.password, 10);
+            await prisma.user.create({
+                data: {
+                    name: u.name,
+                    email: u.email,
+                    password: hashedPassword,
+                    role: u.role,
+                    team_id: u.team_id
+                }
+            });
+            console.log(`✅ Created User: ${u.email} [Role: ${u.role}]`);
+        } else {
+            console.log(`⚠️ User already exists: ${u.email}`);
+        }
+    }
 
     console.log('🎉 Database seeding completed successfully!');
 }

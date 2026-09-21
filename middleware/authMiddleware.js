@@ -6,7 +6,8 @@ const protect = (req, res, next) => {
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
         try {
             token = req.headers.authorization.split(' ')[1];
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'helpdesk_jwt_secret_key_2026');
+            // 👈 التعديل هنا: الاعتماد على الـ .env فقط لحماية التوكن
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
             req.user = decoded;
             next();
         } catch (error) {

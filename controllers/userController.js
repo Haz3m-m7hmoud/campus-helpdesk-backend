@@ -1,73 +1,130 @@
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-// Register a new user
-const registerUser = async (req, res) => {
-    try {
-        const { name, email, password, role } = req.body;
+const prisma = new PrismaClient();
 
-        // 1. Check if user already exists
-        const userExists = await prisma.user.findUnique({ where: { email } });
-        if (userExists) {
-            return res.status(400).json({ success: false, message: 'User already exists' });
+// ==========================================
+// 1. تسجيل الدخول (Login)
+// ==========================================
+const login = async (req, res, next) => {
+    try {
+        const { email, password } = req.body;
+        
+        if (!email || !password) {
+            return res.status(400).json({ success: false, message: 'الرجاء إدخال الإيميل وكلمة المرور' });
         }
 
-        // 2. Hash the password
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
+        const user = await prisma.user.findUnique({ where: { email } });
+        
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
+        }
 
-        // 3. Create the user
-        const newUser = await prisma.user.create({
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
+        }
+
+        // 👈 الـ Token دلوقتي شايل الـ role والـ team_id زي ما الـ AI طلب
+        const token = jwt.sign(
+            { id: user.id, role: user.role, team_id: user.team_id },
+            process.env.JWT_SECRET,
+            { expiresIn: '1d' }
+        );
+
+        res.status(200).json({
+            success: true,
+            token,
+            user: { id: user.id, name: user.name, email: user.email, role: user.role, team_id: user.team_id }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ==========================================
+// 2. تسجيل طالب جديد (Public Register)
+// ==========================================
+const register = async (req, res, next) => {
+    try {
+        const { name, email, password } = req.body;
+
+        const existingUser = await prisma.user.findUnique({ where: { email } });
+        if (existingUser) {
+            return res.status(400).json({ success: false, message: 'هذا الإيميل مسجل مسبقاً' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // 👈 التسجيل العام بيدي صلاحية REPORTER (طالب) إجباري
+        await prisma.user.create({
             data: {
                 name,
                 email,
-                password: hashedPassword, // Save hashed password
-                role: role || 'REPORTER' // Default role
+                password: hashedPassword,
+                role: 'REPORTER' 
             }
         });
 
-        res.status(201).json({ success: true, message: 'User registered successfully', data: { id: newUser.id, name: newUser.name, email: newUser.email } });
+        res.status(201).json({ success: true, message: 'تم إنشاء الحساب بنجاح' });
     } catch (error) {
-        console.error('Error in register:', error);
-        res.status(500).json({ success: false, message: 'Server error during registration' });
+        next(error);
     }
 };
 
-// Login user
-const loginUser = async (req, res) => {
+// ==========================================
+// 3. جلب بيانات المستخدم الحالي (Get Me)
+// ==========================================
+const getMe = async (req, res, next) => {
     try {
-        const { email, password } = req.body;
+        // بنجيب بيانات اليوزر من غير الباسورد
+        const user = await prisma.user.findUnique({
+            where: { id: req.user.id },
+            select: { id: true, name: true, email: true, role: true, team_id: true, createdAt: true, team: true }
+        });
 
-        // 1. Find the user
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
-        }
-
-        // 2. Check the password
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
-        }
-
-        // 3. Generate JWT Token
-        // You should use a strong secret in .env, using a simple one here for testing
-        const token = jwt.sign(
-            { id: user.id, role: user.role }, 
-            process.env.JWT_SECRET || 'supersecretkey', 
-            { expiresIn: '30d' }
-        );
-
-        res.status(200).json({ success: true, token, user: { id: user.id, name: user.name, role: user.role } });
+        res.status(200).json({ success: true, data: user });
     } catch (error) {
-        console.error('Error in login:', error);
-        res.status(500).json({ success: false, message: 'Server error during login' });
+        next(error);
     }
 };
 
-module.exports = {
-    registerUser,
-    loginUser
+// ==========================================
+// 4. إنشاء حساب موظف (Manager Only Endpoint)
+// ==========================================
+const createStaff = async (req, res, next) => {
+    try {
+        const { name, email, password, role, team_id } = req.body;
+
+        // التأكد إن الصلاحية المطلوبة مش طالب (المدير بيعمل فنيين أو أوديتور بس)
+        const allowedRoles = ['AGENT', 'TECHNICIAN', 'AUDITOR'];
+        if (!allowedRoles.includes(role)) {
+            return res.status(400).json({ success: false, message: 'هذه الصلاحية غير مدعومة لإنشاء موظفين' });
+        }
+
+        const existingUser = await prisma.user.findUnique({ where: { email } });
+        if (existingUser) {
+            return res.status(400).json({ success: false, message: 'الإيميل مستخدم بالفعل' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const staff = await prisma.user.create({
+            data: {
+                name,
+                email,
+                password: hashedPassword,
+                role,
+                team_id: team_id || null 
+            },
+            select: { id: true, name: true, email: true, role: true, team_id: true }
+        });
+
+        res.status(201).json({ success: true, message: 'تم إنشاء حساب الموظف بنجاح', data: staff });
+    } catch (error) {
+        next(error);
+    }
 };
+
+module.exports = { login, register, getMe, createStaff };

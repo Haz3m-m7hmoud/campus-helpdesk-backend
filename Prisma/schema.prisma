@@ -15,13 +15,14 @@ enum Role {
   AGENT
   TECHNICIAN
   MANAGER
+  AUDITOR       // 👈 تم إضافة دور المراجع
 }
 
 enum TicketStatus {
   New
   Triaged
   Assigned
-  In_Progress  @map("In Progress")
+  In_Progress   // 👈 تم توحيدها وحذف الـ @map عشان متعملش تعارض
   Waiting
   Resolved
   Reopened
@@ -32,14 +33,20 @@ enum TicketStatus {
 // 2. Auth & Users
 // =====================================
 model User {
-  id              String            @id @default(uuid()) 
-  email           String            @unique
+  id              String         @id @default(uuid()) 
+  email           String         @unique
   name            String
   password        String            
-  role            Role              @default(REPORTER)
-  createdAt       DateTime          @default(now())
+  role            Role           @default(REPORTER)
+  team_id         Int?           
+  createdAt       DateTime       @default(now())
 
-  reportedTickets TICKET[]          @relation("ReportedTickets")
+  team            SUPPORT_TEAM?  @relation(fields: [team_id], references: [team_id])
+  reportedTickets TICKET[]       @relation("ReportedTickets")
+  assignedTickets TICKET[]       @relation("AssignedTickets") // 👈 علاقة التيكتات المحولة للفني
+  comments        COMMENT[]      
+  attachments     ATTACHMENT[]   // 👈 المرفقات اللي رفعها
+  audit_logs      AUDIT_LOG[]    // 👈 سجلات النظام اللي عملها
 }
 
 // =====================================
@@ -52,6 +59,8 @@ model SUPPORT_TEAM {
   
   categories      CATEGORY[]
   assignments     ASSIGNMENT[]
+  users           User[]       
+  tickets         TICKET[]     // 👈 التيكتات المحولة للفريق
 }
 
 model CATEGORY {
@@ -99,10 +108,13 @@ model SLA_POLICY {
 // 4. Core TICKET Model
 // =====================================
 model TICKET {
-  ticket_id              String    @id @default(uuid())
+  ticket_id              String       @id @default(uuid())
+  reference_id           String?      @unique // 👈 رقم تيكت مقروء للطلاب (مثال: HLP-0001)
   reporter_id            String    
+  assignee_id            String?      // 👈 تم إضافة الفني المسؤول
+  team_id                Int?         // 👈 تم إضافة الفريق المسؤول
   title                  String
-  description            String    @db.Text
+  description            String       @db.Text
   category_id            Int
   location_id            Int
   asset_id               String?
@@ -112,7 +124,7 @@ model TICKET {
   priority               String    
   status                 TicketStatus @default(New)
   
-  created_at             DateTime  @default(now())
+  created_at             DateTime     @default(now())
   first_response_at      DateTime?
   assigned_at            DateTime?
   resolved_at            DateTime?
@@ -120,32 +132,36 @@ model TICKET {
   response_sla_due_at    DateTime? 
   resolution_sla_due_at  DateTime?
   
-  user_responded         Boolean   @default(false)
-  reopened               Boolean   @default(false)
+  user_responded         Boolean      @default(false)
+  reopened               Boolean      @default(false)
   reopen_reason          String?
   duplicate_of           String?   
-  is_emergency           Boolean   @default(false)
-  escalated              Boolean   @default(false)
+  is_emergency           Boolean      @default(false)
+  escalated              Boolean      @default(false)
   escalation_reason      String?
-  escalation_level       Int?      @db.SmallInt
+  escalation_level       Int?         @db.SmallInt
   
-  reporter               User          @relation("ReportedTickets", fields: [reporter_id], references: [id])
-  category               CATEGORY      @relation(fields: [category_id], references: [category_id])
-  location               LOCATION      @relation(fields: [location_id], references: [location_id])
-  asset                  ASSET?        @relation(fields: [asset_id], references: [asset_id])
-  sla_policy             SLA_POLICY    @relation(fields: [priority], references: [priority])
+  reporter               User         @relation("ReportedTickets", fields: [reporter_id], references: [id])
+  assignee               User?        @relation("AssignedTickets", fields: [assignee_id], references: [id]) // 👈 الربط مع الفني
+  team                   SUPPORT_TEAM? @relation(fields: [team_id], references: [team_id]) // 👈 الربط مع الفريق
+  category               CATEGORY     @relation(fields: [category_id], references: [category_id])
+  location               LOCATION     @relation(fields: [location_id], references: [location_id])
+  asset                  ASSET?       @relation(fields: [asset_id], references: [asset_id])
+  sla_policy             SLA_POLICY   @relation(fields: [priority], references: [priority])
   
-  duplicate_ticket       TICKET?       @relation("DuplicateTickets", fields: [duplicate_of], references: [ticket_id])
-  duplicates             TICKET[]      @relation("DuplicateTickets")
+  duplicate_ticket       TICKET?      @relation("DuplicateTickets", fields: [duplicate_of], references: [ticket_id])
+  duplicates             TICKET[]     @relation("DuplicateTickets")
 
   assignments            ASSIGNMENT[]
   history                TICKET_STATUS_HISTORY[]
   prediction             PREDICTION?
   feedback               FEEDBACK?
+  comments               COMMENT[]    
+  attachments            ATTACHMENT[] // 👈 ربط المرفقات بالتيكت
 }
 
 // =====================================
-// 5. Data Analytics Tables
+// 5. Data Analytics & Relations
 // =====================================
 model ASSIGNMENT {
   assignment_id   String    @id @default(uuid())
@@ -195,4 +211,50 @@ model TICKET_STATUS_HISTORY {
   changed_by      String   
 
   ticket          TICKET   @relation(fields: [ticket_id], references: [ticket_id])
+}
+
+// =====================================
+// 6. Comments & Attachments (تم إضافة المرفقات)
+// =====================================
+model COMMENT {
+  comment_id  String   @id @default(uuid())
+  ticket_id   String
+  author_id   String
+  body        String   @db.Text
+  is_internal Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  ticket      TICKET   @relation(fields: [ticket_id], references: [ticket_id])
+  author      User     @relation(fields: [author_id], references: [id]) 
+}
+
+model ATTACHMENT {
+  attachment_id  String   @id @default(uuid())
+  ticket_id      String
+  uploader_id    String
+  file_url       String
+  file_name      String
+  file_type      String
+  file_size      Int
+  is_private     Boolean  @default(false) // 👈 عشان لو مرفق داخلي للفنيين بس
+  created_at     DateTime @default(now())
+
+  ticket         TICKET   @relation(fields: [ticket_id], references: [ticket_id])
+  uploader       User     @relation(fields: [uploader_id], references: [id])
+}
+
+// =====================================
+// 7. Security & Auditing (جدول المراقبة)
+// =====================================
+model AUDIT_LOG {
+  log_id         String   @id @default(uuid())
+  action         String   // مثلا: "INVALID_TRANSITION", "DELETE_TICKET"
+  entity_type    String   // مثلا: "TICKET", "USER"
+  entity_id      String
+  user_id        String
+  details        String   @db.Text
+  created_at     DateTime @default(now())
+
+  user           User     @relation(fields: [user_id], references: [id])
 }
