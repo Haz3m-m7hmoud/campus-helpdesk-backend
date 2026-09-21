@@ -5,7 +5,8 @@ const {
     getAllTickets, 
     updateTicket, 
     deleteTicket,
-    getAnalyticsData
+    getAnalyticsData,
+    assignTicket // 👈 ضفنا استدعاء الدالة الجديدة هنا
 } = require('../controllers/ticketController');
 
 const { protect, authorize } = require('../middleware/authMiddleware');
@@ -31,6 +32,9 @@ const validateTicketInput = (req, res, next) => {
 
 // 🧠 AI & Analytics Route (Placed before /:id so it doesn't get confused with an ID)
 router.get('/analytics', protect, authorize('MANAGER', 'AGENT'), getAnalyticsData);
+
+// 🚀 مسار تحويل التيكت للفني (مسموح للـ AGENT والـ MANAGER بس)
+router.put('/:id/assign', protect, authorize('AGENT', 'MANAGER'), assignTicket);
 
 // Standard Routes
 // 👈 الميدل وير اتضاف هنا قبل الكنترولر

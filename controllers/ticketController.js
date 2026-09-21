@@ -101,7 +101,7 @@ const createTicket = async (req, res, next) => {
         
         res.status(201).json({ success: true, data: newTicket });
     } catch (error) {
-        next(error); // 👈 إرسال الخطأ لصائد الأخطاء العام
+        next(error); 
     }
 };
 
@@ -110,12 +110,10 @@ const getAllTickets = async (req, res, next) => {
     try {
         let filter = {};
         
-        // فلترة التيكتات لو اليوزر طالب عادي
         if (req.user.role !== 'MANAGER' && req.user.role !== 'AGENT' && req.user.role !== 'TECHNICIAN') {
             filter = { where: { reporter_id: req.user.id } };
         }
 
-        // 👈 إعدادات تقسيم الصفحات (Pagination)
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
@@ -127,9 +125,8 @@ const getAllTickets = async (req, res, next) => {
             include: { category: true, location: true }
         });
         
-        // حساب إجمالي عدد التيكتات عشان الفرونت إند يعرف عدد الصفحات
         const totalTickets = await prisma.tICKET.count({
-            where: filter.where // عشان لو طالب، يعد تيكتاته هو بس
+            where: filter.where 
         });
 
         res.status(200).json({ 
@@ -143,7 +140,7 @@ const getAllTickets = async (req, res, next) => {
             data: tickets 
         });
     } catch (error) {
-        next(error); // 👈 إرسال الخطأ لصائد الأخطاء العام
+        next(error); 
     }
 };
 
@@ -183,7 +180,7 @@ const updateTicket = async (req, res, next) => {
 
         res.status(200).json({ success: true, data: updatedTicket });
     } catch (error) {
-        next(error); // 👈 إرسال الخطأ لصائد الأخطاء العام
+        next(error); 
     }
 };
 
@@ -198,7 +195,7 @@ const deleteTicket = async (req, res, next) => {
 
         res.status(200).json({ success: true, message: "Ticket deleted successfully" });
     } catch (error) {
-        next(error); // 👈 إرسال الخطأ لصائد الأخطاء العام
+        next(error); 
     }
 };
 
@@ -218,7 +215,43 @@ const getAnalyticsData = async (req, res, next) => {
         });
         res.status(200).json({ success: true, count: tickets.length, data: tickets });
     } catch (error) {
-        next(error); // 👈 إرسال الخطأ لصائد الأخطاء العام
+        next(error); 
+    }
+};
+
+// ==========================================
+// 🚀 الدالة الجديدة: تحويل التيكت للفني
+// ==========================================
+const assignTicket = async (req, res, next) => {
+    try {
+        const { id } = req.params; 
+        const { technician_id } = req.body; // الـ ID بتاع الفني اللي هيستلم التيكت
+
+        const existingTicket = await prisma.tICKET.findUnique({
+            where: { ticket_id: id }
+        });
+
+        if (!existingTicket) {
+            return res.status(404).json({ success: false, message: "التيكت غير موجودة" });
+        }
+
+        // تحديث التيكت بإضافة الفني وتغيير الحالة لـ Assigned
+        const updatedTicket = await prisma.tICKET.update({
+            where: { ticket_id: id },
+            data: {
+                assignee_id: technician_id, // تأكد إن اسم الحقل ده مطابق للـ schema.prisma عندك
+                status: 'Assigned',
+                updated_at: new Date()
+            }
+        });
+
+        res.status(200).json({ 
+            success: true, 
+            message: "تم تحويل التيكت للفني بنجاح", 
+            data: updatedTicket 
+        });
+    } catch (error) {
+        next(error);
     }
 };
 
@@ -227,5 +260,6 @@ module.exports = {
     getAllTickets,
     updateTicket,
     deleteTicket,
-    getAnalyticsData
+    getAnalyticsData,
+    assignTicket // 👈 متنساش تعملها تصدير هنا
 };
