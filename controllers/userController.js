@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const prisma = new PrismaClient();
 
 // ==========================================
-// 1. تسجيل الدخول (Login)
+// 1. تسجيل الدخول (Login & Auto-Register)
 // ==========================================
 const login = async (req, res, next) => {
     try {
@@ -15,18 +15,37 @@ const login = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'الرجاء إدخال الإيميل وكلمة المرور' });
         }
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        // 👈 التأكد إن الإيميل جامعي
+        if (!email.endsWith('@bua.edu.eg')) {
+            return res.status(400).json({ success: false, message: 'يجب استخدام البريد الإلكتروني الجامعي (@bua.edu.eg)' });
+        }
+
+        let user = await prisma.user.findUnique({ where: { email } });
         
         if (!user) {
-            return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
+            // 👈 لو المستخدم مش موجود، نكريتله حساب فوراً
+            const hashedPassword = await bcrypt.hash(password, 10);
+            
+            // استخراج الاسم من الإيميل (مثلاً hazem.2023026092 -> hazem)
+            const nameFromEmail = email.split('@')[0].replace(/[0-9.]/g, ' ').trim() || 'طالب جديد';
+
+            user = await prisma.user.create({
+                data: {
+                    name: nameFromEmail,
+                    email,
+                    password: hashedPassword,
+                    role: 'REPORTER' // صلاحية طالب إجبارية
+                }
+            });
+        } else {
+            // 👈 لو المستخدم موجود فعلاً، نتأكد من الباسورد
+            const isMatch = await bcrypt.compare(password, user.password);
+            if (!isMatch) {
+                return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
+            }
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
-        }
-
-        // 👈 الـ Token دلوقتي شايل الـ role والـ team_id زي ما الـ AI طلب
+        // 👈 الـ Token دلوقتي شايل الـ role والـ team_id
         const token = jwt.sign(
             { id: user.id, role: user.role, team_id: user.team_id },
             process.env.JWT_SECRET,
@@ -44,7 +63,7 @@ const login = async (req, res, next) => {
 };
 
 // ==========================================
-// 2. تسجيل طالب جديد (Public Register)
+// 2. تسجيل طالب جديد (Public Register - يمكن الاستغناء عنه الآن)
 // ==========================================
 const register = async (req, res, next) => {
     try {

@@ -35,7 +35,7 @@ app.set('trust proxy', 1);
 app.use(helmet());
 
 const corsOptions = {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: true, // تم التعديل هنا ليقبل الاتصال من أي بورت (مثل 5173 الخاص بالفرونت إند)
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
 }
