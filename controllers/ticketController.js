@@ -62,7 +62,9 @@ const createTicket = async (req, res, next) => {
     try {
         const { 
             title, description, category_id, location_id, 
-            issue_type, urgency, impact 
+            location_note, // 👈 تمت إضافتها
+            issue_type, urgency, impact,
+            is_emergency // 👈 تمت إضافتها لاستقبال اختيار اليوزر
         } = req.body;
         
         const locNumber = Number(location_id);
@@ -78,8 +80,17 @@ const createTicket = async (req, res, next) => {
             return res.status(400).json({ success: false, message: `رقم الغرفة (${room}) غير صحيح في الدور ${floor}. الغرف من 1 لـ 20 فقط.` });
         }
         
+        // ==========================================
+        // 🚨 معالجة الطوارئ والأولوية
+        // ==========================================
         const calculatedPriority = calculatePriority(impact, urgency);
-        const is_emergency = (calculatedPriority === 'Critical');
+        
+        // فحص كلمات الطوارئ في العنوان
+        const emergencyKeywords = ['حريق', 'طوارئ', 'تسريب', 'انفجار', 'كارثة', 'عاجل جدا', 'fire', 'emergency'];
+        const titleHasEmergency = emergencyKeywords.some(keyword => title.toLowerCase().includes(keyword));
+
+        // الطوارئ بتتحقق لو: اليوزر اختارها أو العنوان فيه كلمة خطر أو الأولوية طلعت حرجة
+        const finalIsEmergency = is_emergency === true || titleHasEmergency || (calculatedPriority === 'Critical');
 
         let slaPolicy = await prisma.sLA_POLICY.findFirst({
             where: { priority: calculatedPriority }
@@ -101,11 +112,12 @@ const createTicket = async (req, res, next) => {
 
         const reporter_id = req.user.id; 
         
-        const currentYear = now.getFullYear();
-        const ticketCount = await prisma.tICKET.count({
-            where: { created_at: { gte: new Date(`${currentYear}-01-01T00:00:00.000Z`) } }
-        });
-        const reference_id = `HLP-${currentYear}-${String(ticketCount + 1).padStart(4, '0')}`;
+        // ==========================================
+        // 🔢 معالجة الـ Reference ID (لتكملة التسلسل بعد 100,000)
+        // ==========================================
+        const ticketCount = await prisma.tICKET.count();
+        const nextSequence = String(ticketCount + 1).padStart(6, '0');
+        const reference_id = `HLP-${nextSequence}`;
         
         const newTicket = await prisma.tICKET.create({
             data: {
@@ -114,11 +126,12 @@ const createTicket = async (req, res, next) => {
                 description,
                 category_id,
                 location_id: locNumber,
+                location_note, // 👈 حفظ ملاحظات المكان
                 issue_type: issue_type || 'Incident', 
                 urgency,
                 impact,
                 priority: calculatedPriority,
-                is_emergency,
+                is_emergency: finalIsEmergency, // 👈 حفظ حالة الطوارئ المحدثة
                 reporter_id,
                 response_sla_due_at,
                 resolution_sla_due_at,
@@ -138,7 +151,6 @@ const createTicket = async (req, res, next) => {
             try {
                 const openTickets = await prisma.tICKET.findMany({
                     where: { status: { in: ['New', 'Assigned', 'In_Progress', 'Waiting'] } },
-                    // 👇 ده الجزء اللي اتعدل عشان نبعت للـ AI الحاجات المطلوبة بس
                     select: { 
                         reference_id: true,
                         description: true, 
