@@ -1,5 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
-const axios = require('axios'); // 👈 ضفنا مكتبة axios عشان نكلم الـ AI Endpoint
+const axios = require('axios'); 
 const prisma = new PrismaClient();
 
 // ==========================================
@@ -101,7 +101,6 @@ const createTicket = async (req, res, next) => {
 
         const reporter_id = req.user.id; 
         
-        // 👈 توليد Reference ID أوتوماتيك (مثال: HLP-2026-0001)
         const currentYear = now.getFullYear();
         const ticketCount = await prisma.tICKET.count({
             where: { created_at: { gte: new Date(`${currentYear}-01-01T00:00:00.000Z`) } }
@@ -115,7 +114,7 @@ const createTicket = async (req, res, next) => {
                 description,
                 category_id,
                 location_id: locNumber,
-                issue_type,
+                issue_type: issue_type || 'Incident', 
                 urgency,
                 impact,
                 priority: calculatedPriority,
@@ -139,13 +138,18 @@ const createTicket = async (req, res, next) => {
             try {
                 const openTickets = await prisma.tICKET.findMany({
                     where: { status: { in: ['New', 'Assigned', 'In_Progress', 'Waiting'] } },
+                    // 👇 ده الجزء اللي اتعدل عشان نبعت للـ AI الحاجات المطلوبة بس
                     select: { 
-                        ticket_id: true, reference_id: true, title: true, 
-                        description: true, status: true, created_at: true, priority: true 
+                        reference_id: true,
+                        description: true, 
+                        priority: true,
+                        is_emergency: true,
+                        location: {
+                            select: { name: true }
+                        }
                     }
                 });
 
-                // اللينك ده بتاع السيرفر اللي شايل موديل الـ Machine Learning
                 const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000/api/ai/analyze';
                 
                 await axios.post(aiServiceUrl, {
@@ -186,7 +190,17 @@ const getAllTickets = async (req, res, next) => {
             where: filter.where,
             skip: skip,
             take: limit,
-            include: { category: true, location: true } 
+            include: { 
+                category: true, 
+                location: true,
+                reporter: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            } 
         });
         
         const totalTickets = await prisma.tICKET.count({ where: filter.where });
@@ -209,7 +223,6 @@ const getTicketById = async (req, res, next) => {
     try {
         const { id } = req.params;
         
-        // 👈 حماية الكومنتات: لو طالب، هيشوف التعليقات العامة بس
         const includeComments = req.user.role === 'REPORTER' 
             ? { where: { is_internal: false }, include: { author: { select: { name: true, role: true } } } } 
             : { include: { author: { select: { name: true, role: true } } } };
@@ -220,7 +233,14 @@ const getTicketById = async (req, res, next) => {
                 category: true, 
                 location: true, 
                 history: true, 
-                comments: includeComments 
+                comments: includeComments,
+                reporter: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
             }
         });
 
