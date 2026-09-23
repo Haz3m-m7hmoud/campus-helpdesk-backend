@@ -68,29 +68,29 @@ app.use((req, res, next) => {
 });
 
 // ==========================================
-// 🔗 ROUTES
+// 🔗 ROUTES (تم تعديل المسارات لتكون Routes كابيتال)
 // ==========================================
 
-const attachmentRoutes = require('./routes/attachmentRoutes');
+const attachmentRoutes = require('./Routes/attachmentRoutes');
 app.use('/api/tickets/:id/attachments', attachmentRoutes);
 
-const commentRoutes = require('./routes/commentRoutes'); 
+const commentRoutes = require('./Routes/commentRoutes'); 
 app.use('/api/tickets/:id/comments', commentRoutes);
 
-const ticketRoutes = require('./routes/ticketRoutes');
+const ticketRoutes = require('./Routes/ticketRoutes');
 app.use('/api/tickets', ticketRoutes);
 
-const userRoutes = require('./routes/userRoutes');
+const userRoutes = require('./Routes/userRoutes');
 app.use('/api/users/login', loginLimiter); 
 app.use('/api/users', userRoutes);
 
-const masterRoutes = require('./routes/masterRoutes');
+const masterRoutes = require('./Routes/masterRoutes');
 app.use('/api', masterRoutes);
 
-const dashboardRoutes = require('./routes/dashboardRoutes');
+const dashboardRoutes = require('./Routes/dashboardRoutes');
 app.use('/api/dashboard', dashboardRoutes);
 
-const auditRoutes = require('./routes/auditRoutes');
+const auditRoutes = require('./Routes/auditRoutes');
 app.use('/api/audit-logs', auditRoutes);
 
 app.get('/api/health', (req, res) => {

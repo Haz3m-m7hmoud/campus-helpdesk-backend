@@ -14,6 +14,11 @@ const options = {
         url: 'http://localhost:5000',
         description: 'Local Development Server',
       },
+      // 💡 التعديل الأول: ضفنا سيرفر الـ Production عشان السواجر يشتغل لايف
+      {
+        url: process.env.SERVER_URL || 'https://your-production-url.com', 
+        description: 'Production Server',
+      }
     ],
     components: {
       securitySchemes: {
@@ -31,15 +36,16 @@ const options = {
       },
     ],
   },
-  // تأكد إن المسارات دي صح ومطابقة لمكان المجلدات عندك
-  apis: ['./routes/*.js'], 
+  // 👈 التعديل التاني: خلينا حرف الـ R كابيتال عشان سيرفر لينكس
+  apis: ['./Routes/*.js'], 
 };
 
 const swaggerSpec = swaggerJSDoc(options);
 
 const swaggerDocs = (app) => {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-  console.log('📄 Swagger Docs available at http://localhost:5000/api-docs');
+  // عدلت رسالة اللوج عشان تكون ديناميكية أكتر
+  console.log('📄 Swagger Docs are up and running at /api-docs');
 };
 
 module.exports = swaggerDocs;
