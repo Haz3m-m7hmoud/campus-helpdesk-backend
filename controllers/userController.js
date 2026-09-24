@@ -146,4 +146,26 @@ const createStaff = async (req, res, next) => {
     }
 };
 
-module.exports = { login, register, getMe, createStaff };
+// ==========================================
+// 5. جلب قائمة المستخدمين (لحفظ الفنيين في الـ Dropdown)
+// ==========================================
+const getUsers = async (req, res, next) => {
+    try {
+        const { role } = req.query;
+        // لو مبعوت role في اللينك، هيفلتر بيه (مثلاً TECHNICIAN)، لو لأ هيجيب كله
+        const whereClause = role ? { role: role } : {};
+        
+        const users = await prisma.user.findMany({
+            where: whereClause,
+            // 👈 تم حذف include نهائياً واكتفينا بـ select 
+            select: { id: true, name: true, email: true, role: true, team: true }
+        });
+        
+        res.status(200).json({ success: true, data: users });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// 👈 متنساش تصدر الدالة الجديدة هنا
+module.exports = { login, register, getMe, createStaff, getUsers };

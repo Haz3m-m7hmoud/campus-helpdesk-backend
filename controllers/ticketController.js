@@ -3,7 +3,7 @@ const axios = require('axios');
 const prisma = new PrismaClient();
 
 // ==========================================
-// 🕒 1. دوال مساعدة (SLA & Priority)
+// 1. Helper Functions (SLA & Priority)
 // ==========================================
 const calculateSLADueDate = (startDate, slaHours) => {
     let current = new Date(startDate);
@@ -12,24 +12,16 @@ const calculateSLADueDate = (startDate, slaHours) => {
     while (remainingHours > 0) {
         let day = current.getDay(); 
         
+        // الإجازة: الخميس (4) والجمعة (5)
         if (day === 4 || day === 5) {
             current.setDate(current.getDate() + (day === 4 ? 2 : 1));
-            current.setHours(8, 0, 0, 0);
+            current.setHours(0, 0, 0, 0);
             continue;
         }
 
-        if (current.getHours() < 8) {
-            current.setHours(8, 0, 0, 0);
-        }
-
-        if (current.getHours() >= 18) {
-            current.setDate(current.getDate() + 1);
-            current.setHours(8, 0, 0, 0);
-            continue;
-        }
-
+        // حساب اليوم كامل 24 ساعة بدلاً من ساعات العمل فقط
         let endOfDay = new Date(current);
-        endOfDay.setHours(18, 0, 0, 0);
+        endOfDay.setHours(23, 59, 59, 999);
         
         let msLeftToday = endOfDay.getTime() - current.getTime();
         let hoursLeftToday = msLeftToday / (1000 * 60 * 60);
@@ -40,7 +32,7 @@ const calculateSLADueDate = (startDate, slaHours) => {
         } else {
             remainingHours -= hoursLeftToday;
             current.setDate(current.getDate() + 1);
-            current.setHours(8, 0, 0, 0);
+            current.setHours(0, 0, 0, 0);
         }
     }
     return current;
@@ -62,34 +54,34 @@ const createTicket = async (req, res, next) => {
     try {
         const { 
             title, description, category_id, location_id, 
-            location_note, // 👈 تمت إضافتها
+            location_note, 
             issue_type, urgency, impact,
-            is_emergency // 👈 تمت إضافتها لاستقبال اختيار اليوزر
+            is_emergency 
         } = req.body;
         
         const locNumber = Number(location_id);
         
         if (isNaN(locNumber) || locNumber < 101 || locNumber > 420) {
-            return res.status(400).json({ success: false, message: "رقم المكان غير صحيح. يجب أن يكون بين 101 و 420" });
+            return res.status(400).json({ success: false, message: "Invalid location ID. Must be between 101 and 420." });
         }
 
         const floor = Math.floor(locNumber / 100);
         const room = locNumber % 100;
 
         if (room < 1 || room > 20) {
-            return res.status(400).json({ success: false, message: `رقم الغرفة (${room}) غير صحيح في الدور ${floor}. الغرف من 1 لـ 20 فقط.` });
+            return res.status(400).json({ success: false, message: `Invalid room number (${room}) on floor ${floor}. Rooms must be between 1 and 20.` });
         }
         
         // ==========================================
-        // 🚨 معالجة الطوارئ والأولوية
+        // Priority and Emergency Handling
         // ==========================================
         const calculatedPriority = calculatePriority(impact, urgency);
         
-        // فحص كلمات الطوارئ في العنوان
-        const emergencyKeywords = ['حريق', 'طوارئ', 'تسريب', 'انفجار', 'كارثة', 'عاجل جدا', 'fire', 'emergency'];
+        // Check for emergency keywords in title
+        const emergencyKeywords = ['fire', 'emergency', 'leak', 'explosion', 'disaster', 'urgent', 'critical'];
         const titleHasEmergency = emergencyKeywords.some(keyword => title.toLowerCase().includes(keyword));
 
-        // الطوارئ بتتحقق لو: اليوزر اختارها أو العنوان فيه كلمة خطر أو الأولوية طلعت حرجة
+        // Emergency triggers if selected by user, title contains keywords, or priority is Critical
         const finalIsEmergency = is_emergency === true || titleHasEmergency || (calculatedPriority === 'Critical');
 
         let slaPolicy = await prisma.sLA_POLICY.findFirst({
@@ -97,11 +89,12 @@ const createTicket = async (req, res, next) => {
         });
 
         if (!slaPolicy) {
+            // أوقات الـ SLA الجديدة والسريعة (بالساعات)
             const fallbackSLAs = {
-                'Critical': { response_sla_hours: 1, resolution_sla_hours: 4 },
-                'High': { response_sla_hours: 2, resolution_sla_hours: 8 },
-                'Medium': { response_sla_hours: 4, resolution_sla_hours: 24 },
-                'Low': { response_sla_hours: 8, resolution_sla_hours: 48 }
+                'Critical': { response_sla_hours: 0.25, resolution_sla_hours: 0.5 }, // نصف ساعة للحل
+                'High': { response_sla_hours: 0.5, resolution_sla_hours: 2 },        // ساعتين للحل
+                'Medium': { response_sla_hours: 1, resolution_sla_hours: 4 },        // 4 ساعات للحل
+                'Low': { response_sla_hours: 2, resolution_sla_hours: 8 }            // 8 ساعات للحل
             };
             slaPolicy = fallbackSLAs[calculatedPriority] || fallbackSLAs['Medium'];
         }
@@ -113,7 +106,7 @@ const createTicket = async (req, res, next) => {
         const reporter_id = req.user.id; 
         
         // ==========================================
-        // 🔢 معالجة الـ Reference ID (لتكملة التسلسل بعد 100,000)
+        // Reference ID Generation
         // ==========================================
         const ticketCount = await prisma.tICKET.count();
         const nextSequence = String(ticketCount + 1).padStart(6, '0');
@@ -126,12 +119,12 @@ const createTicket = async (req, res, next) => {
                 description,
                 category_id,
                 location_id: locNumber,
-                location_note, // 👈 حفظ ملاحظات المكان
+                location_note, 
                 issue_type: issue_type || 'Incident', 
                 urgency,
                 impact,
                 priority: calculatedPriority,
-                is_emergency: finalIsEmergency, // 👈 حفظ حالة الطوارئ المحدثة
+                is_emergency: finalIsEmergency, 
                 reporter_id,
                 response_sla_due_at,
                 resolution_sla_due_at,
@@ -145,7 +138,7 @@ const createTicket = async (req, res, next) => {
         res.status(201).json({ success: true, data: newTicket });
 
         // ==========================================
-        // 🤖 AI Integration Background Job
+        // AI Integration Background Job
         // ==========================================
         setImmediate(async () => {
             try {
@@ -171,7 +164,7 @@ const createTicket = async (req, res, next) => {
                 
                 console.log(`[AI Triggered] Sent ticket ${reference_id} and ${openTickets.length} open tickets to AI model.`);
             } catch (err) {
-                console.error('[AI Warning] Could not reach AI service (Make sure your Python/ML server is running).', err.message);
+                console.error('[AI Warning] Could not reach AI service.', err.message);
             }
         });
 
@@ -229,7 +222,7 @@ const getAllTickets = async (req, res, next) => {
 };
 
 // ==========================================
-// 4. Get Ticket By ID (With Internal Notes Security)
+// 4. Get Ticket By ID (With Timeline Support)
 // ==========================================
 const getTicketById = async (req, res, next) => {
     try {
@@ -244,7 +237,7 @@ const getTicketById = async (req, res, next) => {
             include: { 
                 category: true, 
                 location: true, 
-                history: true, 
+                history: true, // Used by frontend to draw the Timeline Tracker
                 comments: includeComments,
                 reporter: {
                     select: {
@@ -257,14 +250,14 @@ const getTicketById = async (req, res, next) => {
         });
 
         if (!ticket) {
-            return res.status(404).json({ success: false, message: "التيكت غير موجودة" });
+            return res.status(404).json({ success: false, message: "Ticket not found." });
         }
 
         if (req.user.role === 'REPORTER' && ticket.reporter_id !== req.user.id) {
-            return res.status(403).json({ success: false, message: "غير مصرح لك بعرض هذه التيكت" });
+            return res.status(403).json({ success: false, message: "Unauthorized to view this ticket." });
         }
         if (req.user.role === 'TECHNICIAN' && ticket.assignee_id !== req.user.id) {
-            return res.status(403).json({ success: false, message: "غير مصرح لك بعرض هذه التيكت لأنها غير محولة لك" });
+            return res.status(403).json({ success: false, message: "Unauthorized. Ticket not assigned to you." });
         }
 
         res.status(200).json({ success: true, data: ticket });
@@ -288,16 +281,16 @@ const updateTicket = async (req, res, next) => {
         });
 
         if (!existingTicket) {
-            return res.status(404).json({ success: false, message: "Ticket not found" });
+            return res.status(404).json({ success: false, message: "Ticket not found." });
         }
 
         if (userRole === 'TECHNICIAN' && existingTicket.assignee_id !== userId) {
-            return res.status(403).json({ success: false, message: "لا تملك صلاحية تعديل هذه التيكت لأنها ليست من اختصاصك" });
+            return res.status(403).json({ success: false, message: "Unauthorized action on unassigned ticket." });
         }
 
         const currentStatus = existingTicket.status;
         if (!status || status === currentStatus) {
-            return res.status(200).json({ success: true, message: "No status change", data: existingTicket });
+            return res.status(200).json({ success: true, message: "No status change.", data: existingTicket });
         }
 
         const allowedTransitions = {
@@ -313,11 +306,11 @@ const updateTicket = async (req, res, next) => {
 
         const validNextStates = allowedTransitions[currentStatus] || [];
         if (!validNextStates.includes(status)) {
-            return res.status(400).json({ success: false, message: `انتقال غير مسموح: من '${currentStatus}' إلى '${status}'` });
+            return res.status(400).json({ success: false, message: `Invalid transition: from '${currentStatus}' to '${status}'.` });
         }
 
         if (userRole === 'TECHNICIAN' && ['Closed', 'Triaged', 'Reopened', 'New'].includes(status)) {
-            return res.status(403).json({ success: false, message: "يجب تحويلها إلى Resolved فقط." });
+            return res.status(403).json({ success: false, message: "Status can only be changed to Resolved or In_Progress." });
         }
 
         const updateData = { status };
@@ -352,7 +345,7 @@ const deleteTicket = async (req, res, next) => {
         if (historyCount > 0) {
             return res.status(400).json({ 
                 success: false, 
-                message: "لا يمكن حذف هذه التيكت لأن لها سجل حركات. يرجى تغيير حالتها إلى 'Closed' بدلاً من الحذف." 
+                message: "Cannot delete this ticket due to existing history records. Please close it instead." 
             });
         }
 
@@ -360,7 +353,7 @@ const deleteTicket = async (req, res, next) => {
             where: { ticket_id: id }
         });
 
-        res.status(200).json({ success: true, message: "Ticket deleted successfully" });
+        res.status(200).json({ success: true, message: "Ticket deleted successfully." });
     } catch (error) {
         next(error); 
     }
@@ -435,7 +428,7 @@ const assignTicket = async (req, res, next) => {
             where: { ticket_id: id }
         });
 
-        if (!existingTicket) return res.status(404).json({ success: false, message: "التيكت غير موجودة" });
+        if (!existingTicket) return res.status(404).json({ success: false, message: "Ticket not found." });
         
         const currentStatus = existingTicket.status;
 
@@ -449,9 +442,57 @@ const assignTicket = async (req, res, next) => {
             })
         ]);
 
-        res.status(200).json({ success: true, message: "تم تحويل التيكت", data: updatedTicket, history: historyRecord });
+        res.status(200).json({ success: true, message: "Ticket assigned successfully.", data: updatedTicket, history: historyRecord });
     } catch (error) {
         next(error);
+    }
+};
+
+// ==========================================
+// 9. Analyze Ticket (AI API Call)
+// ==========================================
+const analyzeTicket = async (req, res, next) => {
+    try {
+        const ticketId = req.params.id;
+        const ticket = await prisma.tICKET.findUnique({ where: { ticket_id: ticketId } });
+        
+        if (!ticket) {
+            return res.status(404).json({ success: false, message: 'Ticket not found.' });
+        }
+
+        const oldTickets = await prisma.tICKET.findMany({
+            where: { ticket_id: { not: ticketId } }, 
+            take: 50,
+            orderBy: { created_at: 'desc' }, 
+            select: { reference_id: true, description: true, title: true }
+        });
+
+        const formattedHistory = oldTickets.map(t => ({
+            id: t.reference_id,
+            text: `${t.title} ${t.description}` 
+        }));
+
+        // Fetch available technicians to send to AI for Smart Assignment
+        const technicians = await prisma.uSER.findMany({
+            where: { role: 'TECHNICIAN' },
+            select: { id: true, name: true }
+        });
+
+        const aiPayload = {
+            title: ticket.title,
+            description: ticket.description,
+            location: String(ticket.location_id), 
+            urgency: ticket.urgency || "Medium",
+            historical_tickets: formattedHistory,
+            available_technicians: technicians
+        };
+
+        const aiResponse = await axios.post('https://p5-ai-production.up.railway.app/ai/analyze', aiPayload);
+
+        res.status(200).json({ success: true, suggestion: aiResponse.data });
+    } catch (error) {
+        console.error('[AI Error Details]:', error.response ? error.response.data : error.message);
+        res.status(500).json({ success: false, message: 'AI analysis failed.' });
     }
 };
 
@@ -462,5 +503,6 @@ module.exports = {
     updateTicket,
     deleteTicket,
     getAnalyticsData,
-    assignTicket 
+    assignTicket,
+    analyzeTicket 
 };

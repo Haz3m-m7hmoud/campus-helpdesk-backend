@@ -86,12 +86,11 @@ async function main() {
     // ==========================================
     console.log('👤 Seeding default users (Dashboards)...');
     const defaultUsers = [
-        { name: 'System Manager', email: 'manager@badr.edu.eg', password: 'Password123', role: 'MANAGER', team_id: null },
-        { name: 'System Auditor', email: 'auditor@badr.edu.eg', password: 'Password123', role: 'AUDITOR', team_id: null },
-        { name: 'Student Reporter', email: 'student@badr.edu.eg', password: 'Password123', role: 'REPORTER', team_id: null },
-        // تم ربط الوكيل والفني بـ IT Support (team_id: 1)
-        { name: 'Support Agent', email: 'agent@badr.edu.eg', password: 'Password123', role: 'AGENT', team_id: 1 },
-        { name: 'Main Technician', email: 'tech@badr.edu.eg', password: 'Password123', role: 'TECHNICIAN', team_id: 1 }
+        { name: 'System Manager', email: 'manage@bua.edu.eg', password: 'Password123', role: 'MANAGER', team_id: null },
+    { name: 'System Auditor', email: 'auditor@bua.edu.eg', password: 'Password123', role: 'AUDITOR', team_id: null },
+    { name: 'Student Reporter', email: 'student@bua.edu.eg', password: 'Password123', role: 'REPORTER', team_id: null },
+    { name: 'Support Agent', email: 'agent@bua.edu.eg', password: ' ', role: 'AGENT', team_id: 1 },
+    { name: 'Main Technician', email: 'tech@bua.edu.eg', password: 'Password123', role: 'TECHNICIAN', team_id: 1 }
     ];
 
     for (const u of defaultUsers) {

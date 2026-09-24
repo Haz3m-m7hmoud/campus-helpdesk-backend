@@ -7,7 +7,8 @@ const {
     updateTicket, 
     deleteTicket,
     getAnalyticsData,
-    assignTicket 
+    assignTicket,
+    analyzeTicket // 👈 تم إضافة الدالة هنا
 } = require('../controllers/ticketController');
 
 const { protect, authorize } = require('../middleware/authMiddleware');
@@ -73,6 +74,27 @@ router.get('/analytics', protect, authorize('MANAGER', 'AGENT'), getAnalyticsDat
  *         description: Ticket assigned successfully
  */
 router.put('/:id/assign', protect, authorize('AGENT', 'MANAGER'), assignTicket);
+
+/**
+ * @swagger
+ * /api/tickets/{id}/analyze:
+ *   post:
+ *     summary: Analyze a ticket using AI
+ *     tags: [Tickets]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: AI suggestion retrieved successfully
+ */
+// 👈 تم إضافة مسار الـ AI هنا
+router.post('/:id/analyze', protect, authorize('AGENT', 'MANAGER'), analyzeTicket);
 
 /**
  * @swagger

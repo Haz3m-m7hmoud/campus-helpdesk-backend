@@ -117,6 +117,7 @@ model TICKET {
   description            String       @db.Text
   category_id            Int
   location_id            Int
+  location_note          String?      // 👈 تم إضافة ملاحظات المكان هنا
   asset_id               String?
   issue_type             String    
   urgency                String    
@@ -142,8 +143,8 @@ model TICKET {
   escalation_level       Int?         @db.SmallInt
   
   reporter               User         @relation("ReportedTickets", fields: [reporter_id], references: [id])
-  assignee               User?        @relation("AssignedTickets", fields: [assignee_id], references: [id]) // 👈 الربط مع الفني
-  team                   SUPPORT_TEAM? @relation(fields: [team_id], references: [team_id]) // 👈 الربط مع الفريق
+  assignee               User?        @relation("AssignedTickets", fields: [assignee_id], references: [id]) 
+  team                   SUPPORT_TEAM? @relation(fields: [team_id], references: [team_id]) 
   category               CATEGORY     @relation(fields: [category_id], references: [category_id])
   location               LOCATION     @relation(fields: [location_id], references: [location_id])
   asset                  ASSET?       @relation(fields: [asset_id], references: [asset_id])
@@ -157,7 +158,7 @@ model TICKET {
   prediction             PREDICTION?
   feedback               FEEDBACK?
   comments               COMMENT[]    
-  attachments            ATTACHMENT[] // 👈 ربط المرفقات بالتيكت
+  attachments            ATTACHMENT[] 
 }
 
 // =====================================
@@ -214,7 +215,7 @@ model TICKET_STATUS_HISTORY {
 }
 
 // =====================================
-// 6. Comments & Attachments (تم إضافة المرفقات)
+// 6. Comments & Attachments 
 // =====================================
 model COMMENT {
   comment_id  String   @id @default(uuid())
@@ -237,7 +238,7 @@ model ATTACHMENT {
   file_name      String
   file_type      String
   file_size      Int
-  is_private     Boolean  @default(false) // 👈 عشان لو مرفق داخلي للفنيين بس
+  is_private     Boolean  @default(false) 
   created_at     DateTime @default(now())
 
   ticket         TICKET   @relation(fields: [ticket_id], references: [ticket_id])
@@ -245,12 +246,12 @@ model ATTACHMENT {
 }
 
 // =====================================
-// 7. Security & Auditing (جدول المراقبة)
+// 7. Security & Auditing 
 // =====================================
 model AUDIT_LOG {
   log_id         String   @id @default(uuid())
-  action         String   // مثلا: "INVALID_TRANSITION", "DELETE_TICKET"
-  entity_type    String   // مثلا: "TICKET", "USER"
+  action         String   
+  entity_type    String   
   entity_id      String
   user_id        String
   details        String   @db.Text

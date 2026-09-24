@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { login, register, getMe, createStaff } = require('../controllers/userController');
+// 👈 تم إضافة getUsers هنا
+const { login, register, getMe, createStaff, getUsers } = require('../controllers/userController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
 // ==========================================
@@ -54,6 +55,27 @@ router.post('/register', register);
 // Protected Routes
 // ==========================================
 router.use(protect);
+
+/**
+ * @swagger
+ * /api/users:
+ *   get:
+ *     summary: Get all users or filter by role
+ *     tags: [Users]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *         description: Filter users by role (e.g., TECHNICIAN)
+ *     responses:
+ *       200:
+ *         description: List of users retrieved successfully
+ */
+// 👈 تم إضافة المسار الجديد هنا
+router.get('/', getUsers);
 
 /**
  * @swagger
