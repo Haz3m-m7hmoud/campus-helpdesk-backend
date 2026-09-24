@@ -155,7 +155,8 @@ const createTicket = async (req, res, next) => {
                     }
                 });
 
-                const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000/api/ai/analyze';
+                // 👈 تم تحديث اللينك هنا
+                const aiServiceUrl = process.env.AI_SERVICE_URL || 'https://p5-ai-production-2b12.up.railway.app/ai/analyze';
                 
                 await axios.post(aiServiceUrl, {
                     new_ticket: newTicket,
@@ -487,7 +488,8 @@ const analyzeTicket = async (req, res, next) => {
             available_technicians: technicians
         };
 
-        const aiResponse = await axios.post('https://p5-ai-production.up.railway.app/ai/analyze', aiPayload);
+        // 👈 تم تحديث اللينك هنا كمان
+        const aiResponse = await axios.post('https://p5-ai-production-2b12.up.railway.app/ai/analyze', aiPayload);
 
         res.status(200).json({ success: true, suggestion: aiResponse.data });
     } catch (error) {
